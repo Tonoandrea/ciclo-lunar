@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulación del Ciclo Lunar</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #0c1445, #1a237e);
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+        .info-panel {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .phase-info {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .explanation {
+            font-size: 14px;
+            line-height: 1.5;
+            margin-top: 10px;
+        }
+        #sketch-container {
+            display: flex;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌙 Simulación Interactiva del Ciclo Lunar</h1>
+        
+        <div class="info-panel">
+            <div class="phase-info" id="phase-name">Luna Nueva</div>
+            <div class="explanation" id="phase-explanation">
+                La Luna Nueva ocurre cuando la Luna está entre la Tierra y el Sol. 
+                Desde la Tierra no podemos ver la parte iluminada de la Luna.
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="playBtn">▶️ Reproducir</button>
+            <button id="pauseBtn" disabled>⏸️ Pausar</button>
+            <button id="resetBtn">🔄 Reiniciar</button>
+            <button id="speedBtn">⚡ Velocidad: Normal</button>
+        </div>
+
+        <div class="info-panel">
+            <h3>📅 Consultar Fase Lunar por Fecha</h3>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
+                <label for="dateInput" style="font-weight: bold;">Seleccionar fecha:</label>
+                <input type="date" id="dateInput" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-size: 16px;">
+                <button id="checkDateBtn" style="background: #2196F3;">🔍 Consultar Fase</button>
+                <button id="todayBtn" style="background: #FF9800;">📅 Hoy</button>
+            </div>
+            <div id="dateResult" style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; display: none;">
+                <div id="selectedDate" style="font-weight: bold; margin-bottom: 5px;"></div>
+                <div id="moonPhaseForDate" style="font-size: 18px; margin-bottom: 5px;"></div>
+                <div id="phaseDescription"></div>
+                <div id="nextPhases" style="margin-top: 10px; font-size: 14px; opacity: 0.9;"></div>
+            </div>
+        </div>
+
+        <div id="sketch-container"></div>
+
+        <div class="info-panel">
+            <h3>📚 Cómo funciona:</h3>
+            <p><strong>Sol (amarillo):</strong> Fuente de luz que ilumina la Luna</p>
+            <p><strong>Tierra (azul):</strong> Nuestro planeta desde donde observamos las fases</p>
+            <p><strong>Luna (gris/blanco):</strong> Satélite que orbita la Tierra mostrando diferentes fases</p>
+            <p><strong>Líneas amarillas:</strong> Rayos de luz solar</p>
+            <br>
+            <p>🎯 <strong>Concepto clave:</strong> Las fases lunares ocurren porque vemos diferentes porciones 
+            de la cara iluminada de la Luna según su posición relativa al Sol y la Tierra.</p>
+        </div>
+    </div>
+
+    <script>
+let angle = 0;
+let isPlaying = false;
+let speed = 1;
+let speedLevel = 0;
+const speedLevels = [1, 2, 4];
+const speedNames = ['Normal', 'Rápida', 'Muy Rápida'];
+
+// Distancias y tamaños
+const earthRadius = 30;
+const moonRadius = 12;
+const orbitRadius = 120;
+const sunRadius = 40;
+
+// Fases lunares
+const phases = [
+    { name: 'Luna Nueva', angle: 0, explanation: 'La Luna está entre la Tierra y el Sol. No vemos la parte iluminada.', emoji: '🌑' },
+    { name: 'Cuarto Creciente', angle: Math.PI/2, explanation: 'Vemos la mitad derecha de la Luna iluminada.', emoji: '🌓' },
+    { name: 'Luna Llena', angle: Math.PI, explanation: 'La Tierra está entre el Sol y la Luna. Vemos toda la cara iluminada.', emoji: '🌕' },
+    { name: 'Cuarto Menguante', angle: 3*Math.PI/2, explanation: 'Vemos la mitad izquierda de la Luna iluminada.', emoji: '🌗' }
+];
+
+// Referencia de Luna Nueva conocida (1 de enero de 2000)
+const REFERENCE_NEW_MOON = new Date('2000-01-06T18:14:00Z');
+const LUNAR_CYCLE_DAYS = 29.53058867; // Duración promedio del ciclo lunar
+
+function setup() {
+    let canvas = createCanvas(800, 600);
+    canvas.parent('sketch-container');
+    
+    // Event listeners para botones
+    document.getElementById('playBtn').addEventListener('click', () => {
+        isPlaying = true;
+        document.getElementById('playBtn').disabled = true;
+        document.getElementById('pauseBtn').disabled = false;
+    });
+    
+    document.getElementById('pauseBtn').addEventListener('click', () => {
+        isPlaying = false;
+        document.getElementById('playBtn').disabled = false;
+        document.getElementById('pauseBtn').disabled = true;
+    });
+    
+    document.getElementById('resetBtn').addEventListener('click', () => {
+        angle = 0;
+        isPlaying = false;
+        document.getElementById('playBtn').disabled = false;
+        document.getElementById('pauseBtn').disabled = true;
+        updatePhaseInfo();
+    });
+    
+    document.getElementById('speedBtn').addEventListener('click', () => {
+        speedLevel = (speedLevel + 1) % speedLevels.length;
+        speed = speedLevels[speedLevel];
+        document.getElementById('speedBtn').textContent = `⚡ Velocidad: ${speedNames[speedLevel]}`;
+    });
+    
+    // Event listeners para el calendario
+    document.getElementById('checkDateBtn').addEventListener('click', checkMoonPhaseForDate);
+    document.getElementById('todayBtn').addEventListener('click', () => {
+        const today = new Date();
+        document.getElementById('dateInput').value = today.toISOString().split('T')[0];
+        checkMoonPhaseForDate();
+    });
+    
+    // Establecer fecha de hoy por defecto
+    const today = new Date();
+    document.getElementById('dateInput').value = today.toISOString().split('T')[0];
+    
+    updatePhaseInfo();
+}
+
+function draw() {
+    background(15, 25, 60);
+    
+    // Centro del canvas
+    let centerX = width / 2;
+    let centerY = height / 2;
+    
+    // Dibujar estrellas
+    drawStars();
+    
+    // Dibujar rayos de sol
+    drawSunRays(centerX - 250, centerY);
+    
+    // Dibujar el Sol
+    fill(255, 220, 0);
+    noStroke();
+    ellipse(centerX - 250, centerY, sunRadius * 2);
+    
+    // Dibujar órbita lunar
+    stroke(100, 100, 150, 100);
+    strokeWeight(2);
+    noFill();
+    ellipse(centerX, centerY, orbitRadius * 2);
+    
+    // Calcular posición de la Luna
+    let moonX = centerX + cos(angle) * orbitRadius;
+    let moonY = centerY + sin(angle) * orbitRadius;
+    
+    // Dibujar la Tierra
+    fill(70, 130, 220);
+    stroke(100, 150, 255);
+    strokeWeight(2);
+    ellipse(centerX, centerY, earthRadius * 2);
+    
+    // Dibujar continentes en la Tierra
+    fill(100, 200, 100);
+    noStroke();
+    ellipse(centerX - 8, centerY - 5, 10, 8);
+    ellipse(centerX + 5, centerY + 3, 8, 6);
+    
+    // Dibujar la Luna con fase correcta
+    drawMoonPhase(moonX, moonY, angle);
+    
+    // Actualizar ángulo si está reproduciendo
+    if (isPlaying) {
+        angle += 0.02 * speed;
+        if (angle >= TWO_PI) {
+            angle = 0;
+        }
+        updatePhaseInfo();
+    }
+    
+    // Información en pantalla
+    fill(255);
+    textAlign(LEFT);
+    textSize(14);
+    text('Haz clic en los botones para controlar la simulación', 20, height - 30);
+    text(`Ángulo: ${Math.round(degrees(angle))}°`, 20, height - 10);
+}
+
+function drawMoonPhase(x, y, angle) {
+    push();
+    translate(x, y);
+    
+    // Parte oscura de la Luna
+    fill(80, 80, 80);
+    noStroke();
+    ellipse(0, 0, moonRadius * 2);
+    
+    // Calcular qué parte está iluminada
+    let illumination = cos(angle);
+    
+    // Parte iluminada
+    fill(220, 220, 200);
+    
+    if (illumination > 0) {
+        // Luna creciente a llena
+        arc(0, 0, moonRadius * 2, moonRadius * 2, -PI/2, PI/2);
+        if (illumination < 1) {
+            arc(0, 0, moonRadius * 2 * illumination, moonRadius * 2, PI/2, -PI/2);
+        }
+    } else {
+        // Luna menguante
+        arc(0, 0, moonRadius * 2, moonRadius * 2, PI/2, -PI/2);
+        if (illumination > -1) {
+            arc(0, 0, moonRadius * 2 * abs(illumination), moonRadius * 2, -PI/2, PI/2);
+        }
+    }
+    
+    // Borde de la Luna
+    stroke(150);
+    strokeWeight(1);
+    noFill();
+    ellipse(0, 0, moonRadius * 2);
+    
+    pop();
+}
+
+function drawSunRays(sunX, sunY) {
+    stroke(255, 255, 100, 150);
+    strokeWeight(2);
+    
+    for (let i = 0; i < 8; i++) {
+        let rayAngle = (TWO_PI / 8) * i;
+        let x1 = sunX + cos(rayAngle) * (sunRadius + 10);
+        let y1 = sunY + sin(rayAngle) * (sunRadius + 10);
+        let x2 = sunX + cos(rayAngle) * (sunRadius + 25);
+        let y2 = sunY + sin(rayAngle) * (sunRadius + 25);
+        line(x1, y1, x2, y2);
+    }
+}
+
+function drawStars() {
+    fill(255, 255, 255, 200);
+    noStroke();
+    
+    // Estrellas fijas para que no parpadeen
+    let stars = [
+        {x: 100, y: 100}, {x: 200, y: 150}, {x: 680, y: 80},
+        {x: 750, y: 200}, {x: 50, y: 300}, {x: 720, y: 350},
+        {x: 150, y: 500}, {x: 650, y: 500}, {x: 80, y: 450}
+    ];
+    
+    for (let star of stars) {
+        ellipse(star.x, star.y, 3, 3);
+    }
+}
+
+function updatePhaseInfo() {
+    // Normalizar ángulo
+    let normalizedAngle = angle % TWO_PI;
+    if (normalizedAngle < 0) normalizedAngle += TWO_PI;
+    
+    // Determinar fase más cercana
+    let closestPhase = phases[0];
+    let minDiff = Math.abs(normalizedAngle - phases[0].angle);
+    
+    for (let phase of phases) {
+        let diff = Math.abs(normalizedAngle - phase.angle);
+        if (diff > Math.PI) diff = TWO_PI - diff; // Considerar el círculo completo
+        
+        if (diff < minDiff) {
+            minDiff = diff;
+            closestPhase = phase;
+        }
+    }
+    
+    // Actualizar información en pantalla
+    document.getElementById('phase-name').textContent = closestPhase.emoji + ' ' + closestPhase.name;
+    document.getElementById('phase-explanation').textContent = closestPhase.explanation;
+}
+
+function calculateMoonPhase(date) {
+    // Calcular días desde la luna nueva de referencia
+    const timeDiff = date.getTime() - REFERENCE_NEW_MOON.getTime();
+    const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+    
+    // Calcular posición en el ciclo lunar (0-1)
+    const cyclePosition = (daysDiff % LUNAR_CYCLE_DAYS) / LUNAR_CYCLE_DAYS;
+    
+    // Convertir a ángulo
+    const phaseAngle = cyclePosition * TWO_PI;
+    
+    // Determinar fase
+    let phaseName, phaseEmoji, phaseDescription;
+    
+    if (cyclePosition < 0.125 || cyclePosition >= 0.875) {
+        phaseName = 'Luna Nueva';
+        phaseEmoji = '🌑';
+        phaseDescription = 'La Luna no es visible desde la Tierra';
+    } else if (cyclePosition < 0.25) {
+        phaseName = 'Luna Creciente';
+        phaseEmoji = '🌒';
+        phaseDescription = 'Una pequeña porción derecha de la Luna es visible';
+    } else if (Math.abs(cyclePosition - 0.25) < 0.05) {
+        phaseName = 'Cuarto Creciente';
+        phaseEmoji = '🌓';
+        phaseDescription = 'La mitad derecha de la Luna es visible';
+    } else if (cyclePosition < 0.375) {
+        phaseName = 'Luna Gibosa Creciente';
+        phaseEmoji = '🌔';
+        phaseDescription = 'Más de la mitad de la Luna es visible, creciendo';
+    } else if (Math.abs(cyclePosition - 0.5) < 0.05) {
+        phaseName = 'Luna Llena';
+        phaseEmoji = '🌕';
+        phaseDescription = 'La Luna está completamente iluminada';
+    } else if (cyclePosition < 0.625) {
+        phaseName = 'Luna Gibosa Menguante';
+        phaseEmoji = '🌖';
+        phaseDescription = 'Más de la mitad de la Luna es visible, menguando';
+    } else if (Math.abs(cyclePosition - 0.75) < 0.05) {
+        phaseName = 'Cuarto Menguante';
+        phaseEmoji = '🌗';
+        phaseDescription = 'La mitad izquierda de la Luna es visible';
+    } else {
+        phaseName = 'Luna Menguante';
+        phaseEmoji = '🌘';
+        phaseDescription = 'Una pequeña porción izquierda de la Luna es visible';
+    }
+    
+    return {
+        name: phaseName,
+        emoji: phaseEmoji,
+        description: phaseDescription,
+        cyclePosition: cyclePosition,
+        angle: phaseAngle,
+        illumination: Math.round((1 - Math.abs(Math.cos(phaseAngle))) * 100)
+    };
+}
+
+function getNextPhases(date) {
+    const nextPhases = [];
+    const phases = [
+        { name: 'Luna Nueva', position: 0 },
+        { name: 'Cuarto Creciente', position: 0.25 },
+        { name: 'Luna Llena', position: 0.5 },
+        { name: 'Cuarto Menguante', position: 0.75 }
+    ];
+    
+    const currentPhase = calculateMoonPhase(date);
+    
+    for (let phase of phases) {
+        let daysToPhase;
+        if (phase.position >= currentPhase.cyclePosition) {
+            daysToPhase = (phase.position - currentPhase.cyclePosition) * LUNAR_CYCLE_DAYS;
+        } else {
+            daysToPhase = (1 - currentPhase.cyclePosition + phase.position) * LUNAR_CYCLE_DAYS;
+        }
+        
+        const phaseDate = new Date(date.getTime() + daysToPhase * 24 * 60 * 60 * 1000);
+        nextPhases.push({
+            name: phase.name,
+            date: phaseDate,
+            daysFromNow: Math.round(daysToPhase)
+        });
+    }
+    
+    return nextPhases.sort((a, b) => a.daysFromNow - b.daysFromNow).slice(0, 2);
+}
+
+function checkMoonPhaseForDate() {
+    const dateInput = document.getElementById('dateInput').value;
+    if (!dateInput) {
+        alert('Por favor selecciona una fecha');
+        return;
+    }
+    
+    const selectedDate = new Date(dateInput + 'T12:00:00');
+    const moonPhase = calculateMoonPhase(selectedDate);
+    const nextPhases = getNextPhases(selectedDate);
+    
+    // Mostrar resultados
+    document.getElementById('dateResult').style.display = 'block';
+    document.getElementById('selectedDate').textContent = 
+        `📅 ${selectedDate.toLocaleDateString('es-ES', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        })}`;
+    
+    document.getElementById('moonPhaseForDate').textContent = 
+        `${moonPhase.emoji} ${moonPhase.name} (${moonPhase.illumination}% iluminada)`;
+    
+    document.getElementById('phaseDescription').textContent = moonPhase.description;
+    
+    // Mostrar próximas fases
+    let nextPhasesText = '🔮 Próximas fases: ';
+    nextPhases.forEach((phase, index) => {
+        if (index > 0) nextPhasesText += ' • ';
+        nextPhasesText += `${phase.name}: ${phase.date.toLocaleDateString('es-ES')} `;
+        if (phase.daysFromNow === 0) {
+            nextPhasesText += '(hoy)';
+        } else if (phase.daysFromNow === 1) {
+            nextPhasesText += '(mañana)';
+        } else {
+            nextPhasesText += `(en ${phase.daysFromNow} días)`;
+        }
+    });
+    
+    document.getElementById('nextPhases').textContent = nextPhasesText;
+    
+    // Actualizar simulación para mostrar la fase correspondiente
+    angle = moonPhase.angle;
+    updatePhaseInfo();
+}
+    </script>
+</body>
+</html>
